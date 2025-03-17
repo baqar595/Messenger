@@ -1,0 +1,244 @@
+import com.fasterxml.jackson.databind.ObjectMapper;
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+@WebServlet("/message")
+public class MessageServlet extends HttpServlet {
+    private static final UserManager userManager = UserManager.getInstance();
+    private static final MessageValidator messageValidator = MessageValidator.getInstance();
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        String username = request.getParameter("username");
+        String password = request.getParameter("password");
+
+        List<String> messages = userManager.getMessages(username, password);
+        response.setContentType("application/json");
+        response.getWriter().write(objectMapper.writeValueAsString(messages));
+    }
+
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        String username = request.getParameter("username");
+        String message = request.getParameter("message");
+
+        if (!messageValidator.isValid(message) || !userManager.userExists(username)) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            return;
+        }
+        userManager.addMessage(username, message);
+        response.setStatus(HttpServletResponse.SC_OK);
+    }
+}
+
+@WebServlet("/user")
+public class UserServlet extends HttpServlet {
+    private static final UserManager userManager = UserManager.getInstance();
+
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        String username = request.getParameter("username");
+        String password = request.getParameter("password");
+
+        if (userManager.userExists(username)) {
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            response.getWriter().write("The entered username is already registered");
+            return;
+        }
+        userManager.addUser(username, password);
+        response.setStatus(HttpServletResponse.SC_OK);
+        response.getWriter().write("You have successfully registered");
+    }
+}
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class UserManager {
+    private static final UserManager instance = new UserManager();
+    private Connection connection;
+
+    private UserManager() {
+        try {
+            connection = DriverManager.getConnection("jdbc:postgresql://localhost:5432/messaging_db", "user", "password");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static UserManager getInstance() {
+        return instance;
+    }
+
+    public boolean userExists(String username) {
+        try (PreparedStatement stmt = connection.prepareStatement("SELECT 1 FROM users WHERE username = ?")) {
+            stmt.setString(1, username);
+            ResultSet rs = stmt.executeQuery();
+            return rs.next();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    public void addUser(String username, String password) {
+        try (PreparedStatement stmt = connection.prepareStatement("INSERT INTO users (username, password) VALUES (?, ?)");) {
+            stmt.setString(1, username);
+            stmt.setString(2, password);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void addMessage(String username, String message) {
+        try (PreparedStatement stmt = connection.prepareStatement("INSERT INTO messages (username, message) VALUES (?, ?)");) {
+            stmt.setString(1, username);
+            stmt.setString(2, message);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public List<String> getMessages(String username, String password) {
+        List<String> messages = new ArrayList<>();
+        try (PreparedStatement stmt = connection.prepareStatement("SELECT message FROM messages WHERE username = ? AND EXISTS (SELECT 1 FROM users WHERE username = ? AND password = ?)");) {
+            stmt.setString(1, username);
+            stmt.setString(2, username);
+            stmt.setString(3, password);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                messages.add(rs.getString("message"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return messages;
+    }
+}
+
+public class MessageValidator {
+    private static final MessageValidator instance = new MessageValidator();
+
+    private MessageValidator() {}
+
+    public static MessageValidator getInstance() {
+        return instance;
+    }
+
+    public boolean isValid(String message) {
+        return message != null && !message.contains("\n");
+    }
+}
+
+
+//PostgreSQL 
+CREATE DATABASE messaging_db;
+
+\c messaging_db;
+
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE messages (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
+    message TEXT NOT NULL,
+    FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+);
+
+//Html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Messaging App</title>
+    <script src="script.js" defer></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <h1>Messaging App</h1>
+
+    <h2>Register</h2>
+    <input id="reg-username" type="text" placeholder="Username">
+    <input id="reg-password" type="password" placeholder="Password">
+    <button onclick="registerUser()">Register</button>
+
+    <h2>Send Message</h2>
+    <input id="msg-username" type="text" placeholder="Recipient">
+    <input id="msg-content" type="text" placeholder="Message">
+    <button onclick="sendMessage()">Send</button>
+
+    <h2>Inbox</h2>
+    <input id="inbox-username" type="text" placeholder="Username">
+    <input id="inbox-password" type="password" placeholder="Password">
+    <button onclick="getMessages()">Check Inbox</button>
+
+    <ul id="messages-list"></ul>
+</body>
+</html>
+
+//apps.js
+async function registerUser() {
+    let username = document.getElementById("reg-username").value;
+    let password = document.getElementById("reg-password").value;
+
+    let response = await fetch("/user", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `username=${username}&password=${password}`
+    });
+
+    alert(response.status === 200 ? "Registration successful!" : "User already exists!");
+}
+
+async function sendMessage() {
+    let username = document.getElementById("msg-username").value;
+    let message = document.getElementById("msg-content").value;
+
+    let response = await fetch("/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `username=${username}&message=${message}`
+    });
+
+    alert(response.status === 200 ? "Message sent!" : "Failed to send message!");
+}
+
+async function getMessages() {
+    let username = document.getElementById("inbox-username").value;
+    let password = document.getElementById("inbox-password").value;
+
+    let response = await fetch(`/message?username=${username}&password=${password}`);
+
+    if (response.status === 200) {
+        let messages = await response.json();
+        document.getElementById("messages-list").innerHTML = messages.map(msg => `<li>${msg}</li>`).join("");
+    } else {
+        alert("Failed to retrieve messages!");
+    }
+}
+
+//styles.css
+body {
+    font-family: Arial, sans-serif;
+    max-width: 600px;
+    margin: auto;
+}
+input, button {
+    display: block;
+    margin: 5px 0;
+}
+

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Messaging App</title>
+    <script src="script.js" defer></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<h1>Messaging App</h1>
+
+<h2>Register</h2>
+<input id="reg-username" type="text" placeholder="Username">
+<input id="reg-password" type="password" placeholder="Password">
+<button onclick="registerUser()">Register</button>
+
+<h2>Send Message</h2>
+<input id="msg-username" type="text" placeholder="Recipient">
+<input id="msg-content" type="text" placeholder="Message">
+<button onclick="sendMessage()">Send</button>
+
+<h2>Inbox</h2>
+<input id="inbox-username" type="text" placeholder="Username">
+<input id="inbox-password" type="password" placeholder="Password">
+<button onclick="getMessages()">Check Inbox</button>
+
+<ul id="messages-list"></ul>
+</body>
+</html>
