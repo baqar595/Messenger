@@ -14,22 +14,20 @@ import java.io.File;
 public class Main {
     public static void main(String[] args) throws LifecycleException, ServletException {
         Tomcat tomcat = new Tomcat();
-        tomcat.setPort(8080); // Set server port
+        tomcat.setPort(8080); 
 
-        // Set up temporary deployment directory
+      
         String webAppDir = new File("src/main/webapp/").getAbsolutePath();
         StandardContext ctx = (StandardContext) tomcat.addWebapp("", webAppDir);
 
         System.out.println("Starting server at http://localhost:8080/");
 
-        // Add compiled classes directory as resources
         File additionWebInfClasses = new File("target/classes");
         WebResourceRoot resources = new StandardRoot(ctx);
         resources.addPreResources(new DirResourceSet(resources, "/WEB-INF/classes",
                 additionWebInfClasses.getAbsolutePath(), "/"));
         ctx.setResources(resources);
 
-        // Add servlets manually (if not using annotations)
         tomcat.addServlet("", "MessageServlet", new com.example.messaging.servlet.MessageServlet());
         ctx.addServletMappingDecoded("/message", "MessageServlet");
 
